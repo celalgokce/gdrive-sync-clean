@@ -1,0 +1,212 @@
+version: '3.8'
+
+services:
+  # RabbitMQ Message Queue
+  rabbitmq:
+    image: rabbitmq:3.12-management
+    container_name: gdrive-rabbitmq
+    ports:
+      - "5672:5672"     # AMQP port
+      - "15672:15672"   # Management UI
+    environment:
+      RABBITMQ_DEFAULT_USER: gdrive_user
+      RABBITMQ_DEFAULT_PASS: gdrive_pass123
+      RABBITMQ_DEFAULT_VHOST: gdrive_sync
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - gdrive_network
+
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    container_name: gdrive-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: gdrive_sync
+      POSTGRES_USER: gdrive_user
+      POSTGRES_PASSWORD: gdrive_pass123
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gdrive_user -d gdrive_sync"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - gdrive_network
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: gdrive-redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass gdrive_pass123
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "gdrive_pass123", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - gdrive_network
+
+  # Webhook Listener Service
+  webhook-listener:
+    build:
+      context: .
+      dockerfile: docker/webhook/Dockerfile
+    container_name: gdrive-webhook
+    ports:
+      - "5000:5000"
+    environment:
+      - RABBITMQ_URL=amqp://gdrive_user:gdrive_pass123@rabbitmq:5672/gdrive_sync
+      - POSTGRES_URL=postgresql://gdrive_user:gdrive_pass123@postgres:5432/gdrive_sync
+      - REDIS_URL=redis://:gdrive_pass123@redis:6379/0
+      - WEBHOOK_HOST=0.0.0.0
+      - WEBHOOK_PORT=5000
+      - WEBHOOK_VERIFICATION_TOKEN=secure_webhook_token_2025
+      - FLASK_ENV=production
+      - LOG_LEVEL=INFO
+      - ALLOWED_IPS=127.0.0.1,::1,172.16.0.0/12
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./.env:/app/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - gdrive_network
+    restart: unless-stopped
+
+  # S3 Uploader Worker
+  s3-uploader:
+    build:
+      context: .
+      dockerfile: docker/uploader/Dockerfile
+    container_name: gdrive-uploader
+    environment:
+      - RABBITMQ_URL=amqp://gdrive_user:gdrive_pass123@rabbitmq:5672/gdrive_sync
+      - POSTGRES_URL=postgresql://gdrive_user:gdrive_pass123@postgres:5432/gdrive_sync
+      - REDIS_URL=redis://:gdrive_pass123@redis:6379/0
+      - AWS_S3_BUCKET=gdrive-sync-demo
+      - AWS_REGION=eu-central-1
+      - GDRIVE_FOLDER_ID=1TcG_cbVfaRvPUyaPaqyPZVEd5p_eA_s_
+      - GDRIVE_CREDENTIALS_FILE=/app/credentials.json
+      - LOG_LEVEL=INFO
+      - MAX_WORKERS=3
+    volumes:
+      - ./config:/app/config
+      - ./logs:/app/logs
+      - ./src/gdrive_client/credentials.json:/app/credentials.json:ro
+      - ./src/gdrive_client/token.pickle:/app/token.pickle
+      - ~/.aws:/root/.aws:ro  # AWS CLI credentials
+      - ./.env:/app/.env
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - gdrive_network
+    restart: unless-stopped
+    deploy:
+      replicas: 2  # Multiple workers
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: gdrive-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - gdrive_network
+    restart: unless-stopped
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    container_name: gdrive-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - gdrive_network
+    restart: unless-stopped
+
+  # Node Exporter (System Metrics)
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: gdrive-node-exporter
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - gdrive_network
+    restart: unless-stopped
+
+  # RabbitMQ Exporter
+  rabbitmq-exporter:
+    image: kbudde/rabbitmq-exporter:latest
+    container_name: gdrive-rabbitmq-exporter
+    ports:
+      - "9419:9419"
+    environment:
+      - RABBIT_URL=http://gdrive_user:gdrive_pass123@rabbitmq:15672
+    depends_on:
+      - rabbitmq
+    networks:
+      - gdrive_network
+    restart: unless-stopped
+
+volumes:
+  rabbitmq_data:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  gdrive_network:
+    driver: bridge
