@@ -1,20 +1,24 @@
 import os
+import sys
 import logging
 from flask import Flask, request, jsonify
 import pika
 import json
 from datetime import datetime
-from dotenv import load_dotenv
 from functools import wraps
 import ipaddress
 
-# Load environment variables
-load_dotenv()
+# Add paths for imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared')))
+
+from config import get_config
+
+# Initialize config
+config = get_config()
 
 # Logging configuration
-log_level = os.getenv('LOG_LEVEL', 'INFO')
 logging.basicConfig(
-    level=getattr(logging, log_level),
+    level=getattr(logging, config.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -25,14 +29,13 @@ class WebhookValidator:
     """Webhook validation and security"""
     
     def __init__(self):
-        self.verification_token = os.getenv('WEBHOOK_VERIFICATION_TOKEN', 'default_token')
+        self.verification_token = config.WEBHOOK_VERIFICATION_TOKEN
         self.allowed_ips = self._parse_allowed_ips()
     
     def _parse_allowed_ips(self):
-        """Parse allowed IP addresses from environment"""
-        allowed_ips_str = os.getenv('ALLOWED_IPS', '127.0.0.1,::1')
+        """Parse allowed IP addresses from config"""
         try:
-            return [ipaddress.ip_address(ip.strip()) for ip in allowed_ips_str.split(',')]
+            return [ipaddress.ip_address(ip.strip()) for ip in config.ALLOWED_IPS]
         except Exception as e:
             logger.warning(f"Error parsing allowed IPs: {e}")
             return [ipaddress.ip_address('127.0.0.1')]
@@ -77,11 +80,12 @@ class WebhookValidator:
         
         logger.info("All headers validated successfully")
         return True
+
 class RabbitMQManager:
     """RabbitMQ connection management"""
     
     def __init__(self):
-        self.rabbitmq_url = os.getenv('RABBITMQ_URL', 'amqp://guest:guest@localhost:5672/')
+        self.rabbitmq_url = config.RABBITMQ_URL
         self.connection = None
         self.channel = None
         self._connect()
@@ -157,7 +161,7 @@ def webhook():
         
         # Create message
         message = {
-            'event_id': headers.get('X-Goog-Channel-ID'),
+            'event_id': headers.get('X-Goog-Channel-Id'),  # Note: lowercase 'd'
             'event_type': 'webhook_received',
             'resource_state': headers.get('X-Goog-Resource-State'),
             'resource_id': headers.get('X-Goog-Resource-ID', ''),
@@ -197,7 +201,12 @@ def health_check():
                 'rabbitmq': rabbitmq_status,
                 'webhook_listener': 'healthy'
             },
-            'version': '1.0.0'
+            'version': '1.0.0',
+            'config': {
+                'webhook_port': config.WEBHOOK_PORT,
+                'log_level': config.LOG_LEVEL,
+                'verification_token_set': bool(config.WEBHOOK_VERIFICATION_TOKEN)
+            }
         }), 200
         
     except Exception as e:
@@ -208,11 +217,34 @@ def health_check():
             'timestamp': datetime.utcnow().isoformat() + 'Z'
         }), 503
 
+@app.route('/config', methods=['GET'])
+def show_config():
+    """Show current configuration (for debugging)"""
+    try:
+        return jsonify({
+            'config': {
+                'webhook_host': config.WEBHOOK_HOST,
+                'webhook_port': config.WEBHOOK_PORT,
+                'gdrive_folder_id': config.GDRIVE_FOLDER_ID,
+                'aws_s3_bucket': config.AWS_S3_BUCKET,
+                'aws_region': config.AWS_REGION,
+                'log_level': config.LOG_LEVEL,
+                'max_workers': config.MAX_WORKERS,
+                'check_interval': config.SYNC_CHECK_INTERVAL_MINUTES,
+                'allowed_ips': config.ALLOWED_IPS,
+                'credentials_file_exists': config.GDRIVE_CREDENTIALS_FILE.exists(),
+                'token_file_exists': config.GDRIVE_TOKEN_FILE.exists()
+            },
+            'timestamp': datetime.utcnow().isoformat() + 'Z'
+        }), 200
+    except Exception as e:
+        logger.error(f"Config endpoint error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/metrics', methods=['GET'])
 def metrics():
     """Basic metrics endpoint"""
     try:
-        # Basic metrics (can be enhanced with Prometheus)
         return jsonify({
             'webhook_listener_info': {
                 'status': 'running',
@@ -235,11 +267,10 @@ def internal_error(error):
     return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    host = os.getenv('WEBHOOK_HOST', '0.0.0.0')
-    port = int(os.getenv('WEBHOOK_PORT', 5000))
-    debug = os.getenv('FLASK_ENV', 'production') == 'development'
+    logger.info("Starting webhook server with centralized configuration")
+    logger.info(f"Config: {config}")
+    logger.info(f"Server: {config.WEBHOOK_HOST}:{config.WEBHOOK_PORT}")
+    logger.info(f"Google Drive Folder: {config.GDRIVE_FOLDER_ID}")
+    logger.info(f"S3 Bucket: {config.AWS_S3_BUCKET}")
     
-    logger.info(f"Starting webhook server on {host}:{port}")
-    logger.info(f"Environment: {os.getenv('FLASK_ENV', 'production')}")
-    
-    app.run(host=host, port=port, debug=debug)
+    app.run(host=config.WEBHOOK_HOST, port=config.WEBHOOK_PORT, debug=False)

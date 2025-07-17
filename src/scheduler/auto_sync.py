@@ -4,49 +4,50 @@ import time
 import json
 import logging
 from datetime import datetime, timedelta
-from dotenv import load_dotenv
 import requests
 import schedule
 
-# Load environment variables
-load_dotenv()
-
-# Add gdrive_client to path
+# Add paths for imports
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared')))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../gdrive_client')))
+
+from config import get_config
 from gdrive_manager import GoogleDriveManager
+
+# Initialize config
+config = get_config()
 
 # Logging configuration
 logging.basicConfig(
-    level=logging.INFO,
+    level=getattr(logging, config.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 class AutoSyncScheduler:
-    """
-    Google Drive'ı periyodik olarak tarayıp yeni dosyalar bulduğunda
-    webhook endpoint'ini tetikleyen otomatik sync scheduler
-    """
+    """Google Drive otomatik sync scheduler - Merkezi config kullanır"""
     
     def __init__(self):
-        # Configuration from environment
-        self.folder_id = os.getenv('GDRIVE_FOLDER_ID', '1TcG_cbVfaRvPUyaPaqyPZVEd5p_eA_s_')
-        self.webhook_url = os.getenv('WEBHOOK_URL', 'http://localhost:5000/webhook')
-        self.check_interval_minutes = int(os.getenv('SYNC_CHECK_INTERVAL_MINUTES', 5))
-        self.verification_token = os.getenv('WEBHOOK_VERIFICATION_TOKEN', 'secure_webhook_token_2025')
+        self.config = config
+        
+        # Configuration from centralized config
+        self.folder_id = self.config.GDRIVE_FOLDER_ID
+        self.webhook_url = self.config.WEBHOOK_URL
+        self.check_interval_minutes = self.config.SYNC_CHECK_INTERVAL_MINUTES
+        self.verification_token = self.config.WEBHOOK_VERIFICATION_TOKEN
         
         # Google Drive manager
-        credentials_path = os.getenv('GDRIVE_CREDENTIALS_FILE', '../gdrive_client/credentials.json')
-        self.gdrive_manager = GoogleDriveManager(credentials_path)
+        self.gdrive_manager = GoogleDriveManager(str(self.config.GDRIVE_CREDENTIALS_FILE))
         
         # State tracking
-        self.state_file = 'sync_state.json'
+        self.state_file = str(self.config.SYNC_STATE_FILE)
         self.last_sync_time = self.load_last_sync_time()
         
-        logger.info("Auto Sync Scheduler initialized")
+        logger.info("Auto Sync Scheduler initialized with centralized config")
         logger.info(f"Monitoring folder: {self.folder_id}")
         logger.info(f"Check interval: {self.check_interval_minutes} minutes")
         logger.info(f"Webhook URL: {self.webhook_url}")
+        logger.info(f"State file: {self.state_file}")
     
     def load_last_sync_time(self):
         """Son sync zamanını yükle"""
@@ -61,8 +62,8 @@ class AutoSyncScheduler:
         except Exception as e:
             logger.error(f"Error loading sync state: {e}")
         
-        # İlk çalıştırma - 1 saat öncesinden başla
-        initial_time = (datetime.utcnow() - timedelta(hours=1)).isoformat() + 'Z'
+        # İlk çalıştırma - 10 dakika öncesinden başla
+        initial_time = (datetime.utcnow() - timedelta(minutes=10)).isoformat() + 'Z'
         logger.info(f"Initial sync time set to: {initial_time}")
         return initial_time
     
@@ -150,17 +151,17 @@ class AutoSyncScheduler:
     def check_for_changes(self):
         """Drive'ı kontrol et ve değişiklik varsa webhook tetikle"""
         try:
-            logger.info("Checking Google Drive for changes...")
+            logger.info("🔍 Checking Google Drive for changes...")
             
             # Son sync'ten sonraki dosyaları al
             modified_files = self.get_files_modified_after(self.last_sync_time)
             
             if modified_files:
-                logger.info(f"Found {len(modified_files)} new/modified files!")
+                logger.info(f"🆕 Found {len(modified_files)} new/modified files!")
                 
                 # Dosya detaylarını logla
                 for file in modified_files[:3]:  # İlk 3 dosya
-                    logger.info(f"  - {file.get('name')} (modified: {file.get('modifiedTime')})")
+                    logger.info(f"   📄 {file.get('name')} (modified: {file.get('modifiedTime')})")
                 
                 # Webhook'u tetikle
                 if self.trigger_webhook(modified_files):
@@ -168,24 +169,24 @@ class AutoSyncScheduler:
                     current_time = datetime.utcnow().isoformat() + 'Z'
                     self.save_last_sync_time(current_time)
                     self.last_sync_time = current_time
-                    logger.info("Auto sync completed successfully")
+                    logger.info("✅ Auto sync completed successfully")
                 else:
-                    logger.error("Failed to trigger webhook")
+                    logger.error("❌ Failed to trigger webhook")
             else:
-                logger.info("No new files found since last sync")
+                logger.info("✅ No new files found since last sync")
                 
         except Exception as e:
-            logger.error(f"Error during change check: {e}")
+            logger.error(f"❌ Error during change check: {e}")
     
     def start_monitoring(self):
         """Periyodik monitoring başlat"""
-        logger.info(f"Starting auto sync monitoring every {self.check_interval_minutes} minutes")
+        logger.info(f"🚀 Starting auto sync monitoring every {self.check_interval_minutes} minutes")
         
         # Schedule periyodik kontrol
         schedule.every(self.check_interval_minutes).minutes.do(self.check_for_changes)
         
         # İlk kontrolü hemen yap
-        logger.info("Running initial check...")
+        logger.info("🔄 Running initial check...")
         self.check_for_changes()
         
         # Sürekli çalış
@@ -195,14 +196,21 @@ class AutoSyncScheduler:
                 time.sleep(30)  # 30 saniyede bir schedule kontrol
                 
         except KeyboardInterrupt:
-            logger.info("Auto sync scheduler stopped by user")
+            logger.info("🛑 Auto sync scheduler stopped by user")
         except Exception as e:
-            logger.error(f"Scheduler error: {e}")
+            logger.error(f"❌ Scheduler error: {e}")
     
     def run_once(self):
         """Tek seferlik kontrol (test için)"""
-        logger.info("Running one-time sync check...")
+        logger.info("🔄 Running one-time sync check...")
         self.check_for_changes()
+    
+    def reset_state(self):
+        """Sync state'i sıfırla"""
+        current_time = datetime.utcnow().isoformat() + 'Z'
+        self.save_last_sync_time(current_time)
+        self.last_sync_time = current_time
+        logger.info(f"🔄 Sync state reset to: {current_time}")
 
 def main():
     """Ana fonksiyon"""
@@ -211,21 +219,41 @@ def main():
     parser = argparse.ArgumentParser(description='Google Drive Auto Sync Scheduler')
     parser.add_argument('--once', action='store_true', help='Run sync check once and exit')
     parser.add_argument('--reset', action='store_true', help='Reset sync state to current time')
+    parser.add_argument('--config', action='store_true', help='Show configuration and exit')
     
     args = parser.parse_args()
     
-    scheduler = AutoSyncScheduler()
-    
-    if args.reset:
-        current_time = datetime.utcnow().isoformat() + 'Z'
-        scheduler.save_last_sync_time(current_time)
-        logger.info(f"Sync state reset to: {current_time}")
-        return
-    
-    if args.once:
-        scheduler.run_once()
-    else:
-        scheduler.start_monitoring()
+    try:
+        scheduler = AutoSyncScheduler()
+        
+        if args.config:
+            print("🔧 CONFIGURATION")
+            print("=" * 50)
+            print(f"Google Drive Folder ID: {scheduler.folder_id}")
+            print(f"Webhook URL: {scheduler.webhook_url}")
+            print(f"Check Interval: {scheduler.check_interval_minutes} minutes")
+            print(f"State File: {scheduler.state_file}")
+            print(f"Last Sync Time: {scheduler.last_sync_time}")
+            print(f"Credentials File: {scheduler.config.GDRIVE_CREDENTIALS_FILE}")
+            print(f"S3 Bucket: {scheduler.config.AWS_S3_BUCKET}")
+            print(f"Log Level: {scheduler.config.LOG_LEVEL}")
+            print("=" * 50)
+            return
+        
+        if args.reset:
+            scheduler.reset_state()
+            return
+        
+        if args.once:
+            scheduler.run_once()
+        else:
+            scheduler.start_monitoring()
+            
+    except FileNotFoundError as e:
+        logger.error(f"❌ Missing file: {e}")
+        logger.info("💡 Make sure credentials.json exists in src/gdrive_client/")
+    except Exception as e:
+        logger.error(f"❌ Fatal error: {e}")
 
 if __name__ == '__main__':
     main()
