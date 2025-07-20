@@ -2,20 +2,19 @@ import os
 import sys
 import json
 import logging
-import requests
 from flask import Flask, request, jsonify
 from datetime import datetime
 import pika
-from werkzeug.middleware.proxy_fix import ProxyFix
+from prometheus_client import Counter, generate_latest, CONTENT_TYPE_LATEST
 
-# Add the shared directory to Python path
+# Add shared directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared')))
 
 try:
     from config import get_config
     config = get_config()
 except ImportError as e:
-    print(f"❌ Config import error: {e}")
+    print(f"Config import error: {e}")
     sys.exit(1)
 
 # Configure logging
@@ -26,17 +25,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
-# RabbitMQ connection
+# Prometheus metrics
+webhook_requests_total = Counter('webhook_requests_total', 'Total webhook requests received')
+webhook_errors_total = Counter('webhook_errors_total', 'Total webhook errors')
+
 def get_rabbitmq_connection():
     return pika.BlockingConnection(pika.URLParameters(config.RABBITMQ_URL))
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
+    webhook_requests_total.inc()
     try:
-        # Get webhook data
-        data = request.get_json() or {}
+        # Get data safely
+        content_type = request.headers.get('Content-Type', '')
+        
+        if 'application/json' in content_type:
+            data = request.get_json(silent=True) or {}
+        else:
+            data = {}
         
         # Create webhook message
         webhook_message = {
@@ -63,12 +70,14 @@ def webhook():
             logger.info("Message sent to webhook_queue successfully")
             
         except Exception as e:
+            webhook_errors_total.inc()
             logger.error(f"Failed to publish message: {e}")
             return jsonify({'error': 'Failed to publish webhook message'}), 500
         
         return jsonify({'status': 'success', 'message': 'Webhook received and queued'}), 200
         
     except Exception as e:
+        webhook_errors_total.inc()
         logger.error(f"Webhook processing error: {e}")
         return jsonify({'error': 'Internal processing error'}), 500
 
@@ -90,10 +99,10 @@ def show_config():
 
 @app.route('/metrics', methods=['GET'])
 def metrics():
-    return "webhook_requests_total 1", 200
+    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 if __name__ == '__main__':
-    logger.info("Starting webhook listener - IP control DISABLED")
+    logger.info("Starting webhook listener with Prometheus metrics")
     app.run(
         host=config.WEBHOOK_HOST,
         port=config.WEBHOOK_PORT,
