@@ -64,16 +64,17 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      - GDRIVE_FOLDER_ID=1TcG_cbVfaRvPUyaPaqyPZVEd5p_eA_s_
-      - AWS_S3_BUCKET=gdrive-sync-demo
-      - AWS_REGION=eu-central-1
-      - RABBITMQ_URL=amqp://gdrive_user:gdrive_pass123@rabbitmq:5672/gdrive_sync
-      - WEBHOOK_VERIFICATION_TOKEN=secure_webhook_token_2025
-      - WEBHOOK_HOST=0.0.0.0
-      - WEBHOOK_PORT=5000
-      - LOG_LEVEL=INFO
-      - PYTHONPATH=/app
-      - ALLOWED_IPS=0.0.0.0/0
+      - ENV=${ENV:-development}
+      - GDRIVE_FOLDER_ID=${GDRIVE_FOLDER_ID:-1TcG_cbVfaRvPUyaPaqyPZVEd5p_eA_s_}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET:-gdrive-sync-demo}
+      - AWS_REGION=${AWS_REGION:-eu-central-1}
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://gdrive_user:gdrive_pass123@rabbitmq:5672/gdrive_sync}
+      - WEBHOOK_VERIFICATION_TOKEN=${WEBHOOK_VERIFICATION_TOKEN:-secure_webhook_token_2025}
+      - WEBHOOK_HOST=${WEBHOOK_HOST:-0.0.0.0}
+      - WEBHOOK_PORT=${WEBHOOK_PORT:-5000}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONPATH=${PYTHONPATH:-/app}
+      - ALLOWED_IPS=${ALLOWED_IPS:-0.0.0.0/0}
     ports:
       - "5000:5000"
     healthcheck:
@@ -94,16 +95,17 @@ services:
       rabbitmq:
         condition: service_healthy
     environment:
-      - GDRIVE_FOLDER_ID=1TcG_cbVfaRvPUyaPaqyPZVEd5p_eA_s_
-      - AWS_S3_BUCKET=gdrive-sync-demo
-      - AWS_REGION=eu-central-1
-      - RABBITMQ_URL=amqp://gdrive_user:gdrive_pass123@rabbitmq:5672/gdrive_sync
-      - LOG_LEVEL=INFO
-      - PYTHONPATH=/app
+      - ENV=${ENV:-development}
+      - GDRIVE_FOLDER_ID=${GDRIVE_FOLDER_ID:-1TcG_cbVfaRvPUyaPaqyPZVEd5p_eA_s_}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET:-gdrive-sync-demo}
+      - AWS_REGION=${AWS_REGION:-eu-central-1}
+      - RABBITMQ_URL=${RABBITMQ_URL:-amqp://gdrive_user:gdrive_pass123@rabbitmq:5672/gdrive_sync}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONPATH=${PYTHONPATH:-/app}
     volumes:
       - ~/.aws:/root/.aws:ro
     healthcheck:
-      test: ["CMD", "python", "-c", "import pika; pika.BlockingConnection(pika.URLParameters('amqp://gdrive_user:gdrive_pass123@rabbitmq:5672/gdrive_sync'))"]
+      test: ["CMD", "python", "-c", "import pika; pika.BlockingConnection(pika.URLParameters('${RABBITMQ_URL:-amqp://gdrive_user:gdrive_pass123@rabbitmq:5672/gdrive_sync}'))"]
       interval: 30s
       timeout: 10s
       retries: 5
@@ -120,14 +122,15 @@ services:
       webhook-listener:
         condition: service_healthy
     environment:
-      - GDRIVE_FOLDER_ID=1TcG_cbVfaRvPUyaPaqyPZVEd5p_eA_s_
-      - AWS_S3_BUCKET=gdrive-sync-demo
-      - AWS_REGION=eu-central-1
-      - WEBHOOK_URL=http://webhook-listener:5000/webhook
-      - WEBHOOK_VERIFICATION_TOKEN=secure_webhook_token_2025
-      - SYNC_CHECK_INTERVAL_MINUTES=2
-      - LOG_LEVEL=INFO
-      - PYTHONPATH=/app
+      - ENV=${ENV:-development}
+      - GDRIVE_FOLDER_ID=${GDRIVE_FOLDER_ID:-1TcG_cbVfaRvPUyaPaqyPZVEd5p_eA_s_}
+      - AWS_S3_BUCKET=${AWS_S3_BUCKET:-gdrive-sync-demo}
+      - AWS_REGION=${AWS_REGION:-eu-central-1}
+      - WEBHOOK_URL=${WEBHOOK_URL:-http://webhook-listener:5000/webhook}
+      - WEBHOOK_VERIFICATION_TOKEN=${WEBHOOK_VERIFICATION_TOKEN:-secure_webhook_token_2025}
+      - SYNC_CHECK_INTERVAL_MINUTES=${SYNC_CHECK_INTERVAL_MINUTES:-2}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - PYTHONPATH=${PYTHONPATH:-/app}
     volumes:
       - ./sync_state.json:/app/sync_state.json
     healthcheck:
