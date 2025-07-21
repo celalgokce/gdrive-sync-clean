@@ -1,0 +1,72 @@
+{{- if .Values.autoScheduler.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gdrive-s3-sync.fullname" . }}-scheduler
+  labels:
+    {{- include "gdrive-s3-sync.labels" . | nindent 4 }}
+    app.kubernetes.io/component: auto-scheduler
+spec:
+  replicas: {{ .Values.autoScheduler.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gdrive-s3-sync.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: auto-scheduler
+  template:
+    metadata:
+      labels:
+        {{- include "gdrive-s3-sync.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: auto-scheduler
+    spec:
+      serviceAccountName: {{ include "gdrive-s3-sync.serviceAccountName" . }}
+      containers:
+        - name: auto-scheduler
+          image: "{{ .Values.autoScheduler.image.repository }}:{{ .Values.autoScheduler.image.tag }}"
+          imagePullPolicy: {{ .Values.autoScheduler.image.pullPolicy }}
+          command:
+            - python
+            - src/scheduler/auto_sync.py
+          env:
+            - name: ENV
+              value: {{ .Values.environment }}
+            - name: GDRIVE_FOLDER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+                  key: gdrive-folder-id
+            - name: AWS_S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+                  key: aws-s3-bucket
+            - name: WEBHOOK_URL
+              value: "http://{{ include "gdrive-s3-sync.fullname" . }}-webhook:5000/webhook"
+            - name: SYNC_CHECK_INTERVAL_MINUTES
+              value: {{ .Values.config.gdrive.checkIntervalMinutes | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.scheduler.logLevel }}
+            - name: PYTHONPATH
+              value: "/app"
+          resources:
+            {{- toYaml .Values.autoScheduler.resources | nindent 12 }}
+          volumeMounts:
+            - name: gdrive-credentials
+              mountPath: /app/credentials.json
+              subPath: credentials.json
+              readOnly: true
+            - name: gdrive-token
+              mountPath: /app/token.pickle
+              subPath: token.pickle
+              readOnly: true
+            - name: temp-storage
+              mountPath: /app/temp
+      volumes:
+        - name: gdrive-credentials
+          secret:
+            secretName: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+        - name: gdrive-token
+          secret:
+            secretName: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+        - name: temp-storage
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,38 @@
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: gdrive-dev-prometheus
+    ports:
+      - "9091:9090"  # Farklı port kullan
+    volumes:
+      - ../../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    networks:
+      - gdrive_network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: gdrive-dev-grafana
+    depends_on:
+      - prometheus
+    ports:
+      - "3001:3000"  # Farklı port kullan
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../../monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../../monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    networks:
+      - gdrive_network
+
+# Include all other services from main docker-compose.yml
+include:
+  - docker-compose.yml

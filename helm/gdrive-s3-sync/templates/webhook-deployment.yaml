@@ -1,0 +1,88 @@
+{{- if .Values.webhookListener.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gdrive-s3-sync.fullname" . }}-webhook
+  labels:
+    {{- include "gdrive-s3-sync.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-listener
+spec:
+  replicas: {{ .Values.webhookListener.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gdrive-s3-sync.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: webhook-listener
+  template:
+    metadata:
+      labels:
+        {{- include "gdrive-s3-sync.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: webhook-listener
+    spec:
+      serviceAccountName: {{ include "gdrive-s3-sync.serviceAccountName" . }}
+      containers:
+        - name: webhook-listener
+          image: "{{ .Values.webhookListener.image.repository }}:{{ .Values.webhookListener.image.tag }}"
+          imagePullPolicy: {{ .Values.webhookListener.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.config.webhook.port }}
+              protocol: TCP
+          env:
+            - name: ENV
+              value: {{ .Values.environment }}
+            - name: GDRIVE_FOLDER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+                  key: gdrive-folder-id
+            - name: WEBHOOK_VERIFICATION_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+                  key: webhook-verification-token
+            - name: RABBITMQ_URL
+              value: "amqp://{{ .Values.rabbitmq.auth.username }}:$(RABBITMQ_PASSWORD)@{{ include "gdrive-s3-sync.fullname" . }}-rabbitmq:5672/"
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-rabbitmq
+                  key: rabbitmq-password
+            - name: WEBHOOK_HOST
+              value: {{ .Values.config.webhook.host }}
+            - name: WEBHOOK_PORT
+              value: {{ .Values.config.webhook.port | quote }}
+            - name: LOG_LEVEL
+              value: {{ .Values.config.webhook.logLevel }}
+            - name: PYTHONPATH
+              value: "/app"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.webhookListener.resources | nindent 12 }}
+          volumeMounts:
+            - name: gdrive-credentials
+              mountPath: /app/credentials.json
+              subPath: credentials.json
+              readOnly: true
+            - name: gdrive-token
+              mountPath: /app/token.pickle
+              subPath: token.pickle
+              readOnly: true
+      volumes:
+        - name: gdrive-credentials
+          secret:
+            secretName: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+        - name: gdrive-token
+          secret:
+            secretName: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+{{- end }}

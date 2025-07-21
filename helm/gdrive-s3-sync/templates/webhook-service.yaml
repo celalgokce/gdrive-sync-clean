@@ -1,0 +1,19 @@
+{{- if .Values.webhookListener.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "gdrive-s3-sync.fullname" . }}-webhook
+  labels:
+    {{- include "gdrive-s3-sync.labels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-listener
+spec:
+  type: {{ .Values.webhookListener.service.type }}
+  ports:
+    - port: {{ .Values.webhookListener.service.port }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "gdrive-s3-sync.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: webhook-listener
+{{- end }}

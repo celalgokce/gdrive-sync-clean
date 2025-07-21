@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15
-    container_name: gdrive-postgres
+    container_name: gdrive-dev-postgres
     environment:
       POSTGRES_DB: gdrive_sync
       POSTGRES_USER: gdrive_user
@@ -22,7 +20,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: gdrive-redis
+    container_name: gdrive-dev-redis
     ports:
       - "6379:6379"
     volumes:
@@ -37,7 +35,7 @@ services:
 
   rabbitmq:
     image: rabbitmq:3.12-management
-    container_name: gdrive-rabbitmq
+    container_name: gdrive-dev-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: gdrive_user
       RABBITMQ_DEFAULT_PASS: gdrive_pass123
@@ -57,9 +55,9 @@ services:
 
   webhook-listener:
     build:
-      context: .
-      dockerfile: docker/webhook/Dockerfile
-    container_name: gdrive-webhook
+      context: ../../
+      dockerfile: src/webhook_listener/Dockerfile
+    container_name: gdrive-dev-webhook
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -88,9 +86,9 @@ services:
 
   s3-uploader:
     build:
-      context: .
-      dockerfile: docker/s3-worker/Dockerfile
-    container_name: gdrive-s3-uploader
+      context: ../../
+      dockerfile: src/s3_uploader/Dockerfile
+    container_name: gdrive-dev-s3-uploader
     depends_on:
       rabbitmq:
         condition: service_healthy
@@ -115,9 +113,9 @@ services:
 
   auto-scheduler:
     build:
-      context: .
-      dockerfile: docker/scheduler/Dockerfile
-    container_name: gdrive-scheduler
+      context: ../../
+      dockerfile: src/scheduler/Dockerfile
+    container_name: gdrive-dev-scheduler
     depends_on:
       webhook-listener:
         condition: service_healthy
@@ -132,7 +130,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
       - PYTHONPATH=${PYTHONPATH:-/app}
     volumes:
-      - ./sync_state.json:/app/sync_state.json
+      - ../../sync_state.json:/app/sync_state.json
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://webhook-listener:5000/health', timeout=5)"]
       interval: 60s
@@ -144,11 +142,11 @@ services:
 
   prometheus:
     image: prom/prometheus:latest
-    container_name: gdrive-prometheus
+    container_name: gdrive-dev-prometheus
     ports:
       - "9090:9090"
     volumes:
-      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
@@ -161,7 +159,7 @@ services:
 
   grafana:
     image: grafana/grafana:latest
-    container_name: gdrive-grafana
+    container_name: gdrive-dev-grafana
     depends_on:
       - prometheus
     ports:
@@ -171,14 +169,14 @@ services:
       - GF_USERS_ALLOW_SIGN_UP=false
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ../../monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ../../monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
     networks:
       - gdrive_network
 
   node-exporter:
     image: prom/node-exporter:latest
-    container_name: gdrive-node-exporter
+    container_name: gdrive-dev-node-exporter
     ports:
       - "9100:9100"
     volumes:

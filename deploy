@@ -1,0 +1,45 @@
+#!/bin/bash
+
+# GDrive-S3-Sync Unified Deployment Script
+# Usage: ./deploy <platform> <environment> [options]
+
+PLATFORM=${1:-help}
+ENVIRONMENT=${2:-development}
+
+case $PLATFORM in
+  docker)
+    echo "🐳 Deploying with Docker Compose..."
+    exec deployment/docker/deploy-docker.sh $ENVIRONMENT "${@:3}"
+    ;;
+  kubernetes|k8s|helm)
+    echo "⛵ Deploying with Helm..."
+    exec deployment/helm/deploy-helm.sh $ENVIRONMENT "${@:3}"
+    ;;
+  admin)
+    echo "🔧 Running admin process..."
+    exec deployment/scripts/run-admin.sh $ENVIRONMENT "${@:3}"
+    ;;
+  help|*)
+    echo "GDrive-S3-Sync Deployment"
+    echo "=========================="
+    echo ""
+    echo "Usage: ./deploy <platform> <environment> [options]"
+    echo ""
+    echo "Platforms:"
+    echo "  docker     - Deploy with Docker Compose"
+    echo "  helm       - Deploy with Helm to Kubernetes" 
+    echo "  admin      - Run admin processes"
+    echo ""
+    echo "Environments:"
+    echo "  development, staging, production"
+    echo ""
+    echo "Examples:"
+    echo "  ./deploy docker development"
+    echo "  ./deploy helm production"
+    echo "  ./deploy admin development health-check"
+    echo ""
+    echo "Available Scripts:"
+    echo "  deployment/scripts/edit-secrets.sh <env>    - Edit secrets"
+    echo "  deployment/scripts/view-secrets.sh <env>    - View secrets"
+    ;;
+esac

@@ -1,0 +1,49 @@
+1. To deploy this chart securely, you need to provide secrets:
+
+   # Create secrets file with your values
+   echo "secrets:
+     gdrive:
+       folderId: YOUR_FOLDER_ID
+     aws:
+       s3Bucket: YOUR_S3_BUCKET
+       region: eu-central-1
+     webhook:
+       verificationToken: YOUR_SECURE_TOKEN
+     database:
+       postgresPassword: YOUR_POSTGRES_PASSWORD
+       redis_password: YOUR_REDIS_PASSWORD
+       rabbitmqPassword: YOUR_RABBITMQ_PASSWORD" > my-secrets.yaml
+
+   # Install with secrets
+   helm install gdrive-s3-sync ./helm/gdrive-s3-sync \
+     --set-file secrets.gdrive.credentialsJson=src/gdrive_client/credentials.json \
+     --set-file secrets.gdrive.tokenPickle=src/gdrive_client/token.pickle \
+     -f my-secrets.yaml
+
+2. Get the application URL:
+{{- if .Values.ingress.enabled }}
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.webhookListener.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "gdrive-s3-sync.fullname" . }}-webhook)
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.webhookListener.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "gdrive-s3-sync.fullname" . }}-webhook'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "gdrive-s3-sync.fullname" . }}-webhook --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.webhookListener.service.port }}
+{{- else if contains "ClusterIP" .Values.webhookListener.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "gdrive-s3-sync.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:5000 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 5000:$CONTAINER_PORT
+{{- end }}
+
+3. Useful commands:
+   kubectl get pods -n {{ .Release.Namespace }}
+   kubectl logs -f deployment/{{ include "gdrive-s3-sync.fullname" . }}-webhook -n {{ .Release.Namespace }}
+   kubectl port-forward svc/{{ include "gdrive-s3-sync.fullname" . }}-webhook 5000:5000 -n {{ .Release.Namespace }}

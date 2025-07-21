@@ -1,0 +1,175 @@
+# Global configuration
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+
+# Environment configuration
+environment: development
+
+# Application configuration
+app:
+  name: gdrive-s3-sync
+  version: "1.0.0"
+
+# Default configuration (non-sensitive)
+config:
+  gdrive:
+    checkIntervalMinutes: 2
+  webhook:
+    host: "0.0.0.0"
+    port: 5000
+    logLevel: INFO
+  s3:
+    maxWorkers: 3
+    logLevel: INFO
+  scheduler:
+    logLevel: INFO
+
+# Webhook Listener service
+webhookListener:
+  enabled: true
+  replicaCount: 2
+  image:
+    repository: gdrive-webhook
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 5000
+    targetPort: 5000
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# S3 Uploader service
+s3Uploader:
+  enabled: true
+  replicaCount: 3
+  image:
+    repository: gdrive-s3-uploader
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+    requests:
+      cpu: 200m
+      memory: 256Mi
+
+# Auto Scheduler service
+autoScheduler:
+  enabled: true
+  replicaCount: 1
+  image:
+    repository: gdrive-scheduler
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  resources:
+    limits:
+      cpu: 500m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+# PostgreSQL configuration
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: ""
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+      userPasswordKey: "postgres-password"
+    username: "gdrive_user"
+    database: "gdrive_sync"
+  primary:
+    persistence:
+      enabled: true
+      size: 8Gi
+
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: true
+    existingSecret: ""
+    existingSecretPasswordKey: "redis-password"
+  master:
+    persistence:
+      enabled: true
+      size: 2Gi
+
+# RabbitMQ configuration
+rabbitmq:
+  enabled: true
+  auth:
+    username: "gdrive_user"
+    existingPasswordSecret: ""
+    existingSecretPasswordKey: "rabbitmq-password"
+  persistence:
+    enabled: true
+    size: 4Gi
+
+# Monitoring
+monitoring:
+  prometheus:
+    enabled: true
+  grafana:
+    enabled: true
+
+# Ingress configuration
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: gdrive-sync.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+# Service Account
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+# Pod Security Context
+podSecurityContext:
+  fsGroup: 2000
+
+# Security Context
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: false
+  runAsNonRoot: true
+  runAsUser: 1000
+
+# Node Selector
+nodeSelector: {}
+
+# Tolerations
+tolerations: []
+
+# Affinity
+affinity: {}
+
+# Secrets configuration (will be overridden by SOPS)
+secrets:
+  gdrive:
+    folderId: ""
+    credentialsJson: ""
+    tokenPickle: ""
+  aws:
+    s3Bucket: ""
+    region: "eu-central-1"
+  webhook:
+    verificationToken: ""

@@ -1,0 +1,73 @@
+{{- if .Values.s3Uploader.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "gdrive-s3-sync.fullname" . }}-s3-uploader
+  labels:
+    {{- include "gdrive-s3-sync.labels" . | nindent 4 }}
+    app.kubernetes.io/component: s3-uploader
+spec:
+  replicas: {{ .Values.s3Uploader.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "gdrive-s3-sync.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: s3-uploader
+  template:
+    metadata:
+      labels:
+        {{- include "gdrive-s3-sync.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: s3-uploader
+    spec:
+      serviceAccountName: {{ include "gdrive-s3-sync.serviceAccountName" . }}
+      containers:
+        - name: s3-uploader
+          image: "{{ .Values.s3Uploader.image.repository }}:{{ .Values.s3Uploader.image.tag }}"
+          imagePullPolicy: {{ .Values.s3Uploader.image.pullPolicy }}
+          env:
+            - name: ENV
+              value: {{ .Values.environment }}
+            - name: GDRIVE_FOLDER_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+                  key: gdrive-folder-id
+            - name: AWS_S3_BUCKET
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+                  key: aws-s3-bucket
+            - name: AWS_REGION
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+                  key: aws-region
+            - name: RABBITMQ_URL
+              value: "amqp://{{ .Values.rabbitmq.auth.username }}:$(RABBITMQ_PASSWORD)@{{ include "gdrive-s3-sync.fullname" . }}-rabbitmq:5672/"
+            - name: RABBITMQ_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "gdrive-s3-sync.fullname" . }}-rabbitmq
+                  key: rabbitmq-password
+            - name: LOG_LEVEL
+              value: {{ .Values.config.s3.logLevel }}
+            - name: PYTHONPATH
+              value: "/app"
+          resources:
+            {{- toYaml .Values.s3Uploader.resources | nindent 12 }}
+          volumeMounts:
+            - name: gdrive-credentials
+              mountPath: /app/credentials.json
+              subPath: credentials.json
+              readOnly: true
+            - name: gdrive-token
+              mountPath: /app/token.pickle
+              subPath: token.pickle
+              readOnly: true
+      volumes:
+        - name: gdrive-credentials
+          secret:
+            secretName: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+        - name: gdrive-token
+          secret:
+            secretName: {{ include "gdrive-s3-sync.fullname" . }}-secrets
+{{- end }}
