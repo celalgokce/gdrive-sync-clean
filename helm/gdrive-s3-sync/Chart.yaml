@@ -30,3 +30,11 @@ dependencies:
     version: 12.5.5
     repository: https://charts.bitnami.com/bitnami
     condition: rabbitmq.enabled
+  - name: grafana
+    version: "~7.0"
+    repository: https://grafana.github.io/helm-charts
+    condition: grafana.enabled
+  - name: prometheus
+    version: "~25.0"
+    repository: https://prometheus-community.github.io/helm-charts
+    condition: prometheus.enabled

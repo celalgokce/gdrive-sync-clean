@@ -10,7 +10,7 @@ spec:
   type: {{ .Values.webhookListener.service.type }}
   ports:
     - port: {{ .Values.webhookListener.service.port }}
-      targetPort: http
+      targetPort: webhook-port
       protocol: TCP
       name: http
   selector:

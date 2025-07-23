@@ -18,17 +18,14 @@ spec:
         {{- include "gdrive-s3-sync.selectorLabels" . | nindent 8 }}
         app.kubernetes.io/component: auto-scheduler
     spec:
-      serviceAccountName: {{ include "gdrive-s3-sync.serviceAccountName" . }}
       containers:
         - name: auto-scheduler
           image: "{{ .Values.autoScheduler.image.repository }}:{{ .Values.autoScheduler.image.tag }}"
           imagePullPolicy: {{ .Values.autoScheduler.image.pullPolicy }}
-          command:
-            - python
-            - src/scheduler/auto_sync.py
           env:
+            # Core environment
             - name: ENV
-              value: {{ .Values.environment }}
+              value: {{ .Values.environment | quote }}
             - name: GDRIVE_FOLDER_ID
               valueFrom:
                 secretKeyRef:
@@ -40,33 +37,13 @@ spec:
                   name: {{ include "gdrive-s3-sync.fullname" . }}-secrets
                   key: aws-s3-bucket
             - name: WEBHOOK_URL
-              value: "http://{{ include "gdrive-s3-sync.fullname" . }}-webhook:5000/webhook"
+              value: "http://{{ include "gdrive-s3-sync.fullname" . }}-webhook:{{ .Values.webhookListener.service.port }}/webhook"
             - name: SYNC_CHECK_INTERVAL_MINUTES
               value: {{ .Values.config.gdrive.checkIntervalMinutes | quote }}
             - name: LOG_LEVEL
-              value: {{ .Values.config.scheduler.logLevel }}
+              value: {{ .Values.config.scheduler.logLevel | quote }}
             - name: PYTHONPATH
               value: "/app"
           resources:
             {{- toYaml .Values.autoScheduler.resources | nindent 12 }}
-          volumeMounts:
-            - name: gdrive-credentials
-              mountPath: /app/credentials.json
-              subPath: credentials.json
-              readOnly: true
-            - name: gdrive-token
-              mountPath: /app/token.pickle
-              subPath: token.pickle
-              readOnly: true
-            - name: temp-storage
-              mountPath: /app/temp
-      volumes:
-        - name: gdrive-credentials
-          secret:
-            secretName: {{ include "gdrive-s3-sync.fullname" . }}-secrets
-        - name: gdrive-token
-          secret:
-            secretName: {{ include "gdrive-s3-sync.fullname" . }}-secrets
-        - name: temp-storage
-          emptyDir: {}
 {{- end }}

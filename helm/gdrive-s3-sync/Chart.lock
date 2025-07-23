@@ -8,5 +8,11 @@ dependencies:
 - name: rabbitmq
   repository: https://charts.bitnami.com/bitnami
   version: 12.5.5
-digest: sha256:1593adef76ec1d4e5dc9945249e05cac575d130f0ab9f76a911ebfdfac254a06
-generated: "2025-07-21T13:45:47.583391+03:00"
+- name: grafana
+  repository: https://grafana.github.io/helm-charts
+  version: 7.0.22
+- name: prometheus
+  repository: https://prometheus-community.github.io/helm-charts
+  version: 25.0.0
+digest: sha256:70281e58a1a31d7a2e2505c0841870e5d5a5b90a04dff7fe46f9c2ce912afd78
+generated: "2025-07-23T08:46:03.874156+03:00"

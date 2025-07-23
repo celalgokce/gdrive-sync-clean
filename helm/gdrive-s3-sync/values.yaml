@@ -173,3 +173,38 @@ secrets:
     region: "eu-central-1"
   webhook:
     verificationToken: ""
+
+# Monitoring Stack
+grafana:
+  enabled: true
+  admin:
+    password: admin123
+  service:
+    type: ClusterIP
+    port: 80
+  persistence:
+    enabled: false
+  datasources:
+    datasources.yaml:
+      apiVersion: 1
+      datasources:
+        - name: Prometheus
+          type: prometheus
+          url: http://{{ .Release.Name }}-prometheus-server:80
+          access: proxy
+          isDefault: true
+
+prometheus:
+  enabled: true
+  server:
+    persistentVolume:
+      enabled: false
+    service:
+      type: ClusterIP
+      servicePort: 80
+  alertmanager:
+    enabled: false
+  nodeExporter:
+    enabled: true
+  pushgateway:
+    enabled: false
