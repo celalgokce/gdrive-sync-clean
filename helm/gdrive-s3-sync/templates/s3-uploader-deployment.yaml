@@ -31,7 +31,7 @@ spec:
                   name: {{ .Release.Name }}-rabbitmq
                   key: rabbitmq-password
             - name: RABBITMQ_URL
-              value: "amqp://gdrive_user:AYwTvSXOZiTQaNyp@{{ .Release.Name }}-rabbitmq:5672/"
+              value: "amqp://gdrive_user:$(RABBITMQ_PASSWORD)@{{ .Release.Name }}-rabbitmq:5672/"
             - name: GDRIVE_FOLDER_ID
               valueFrom:
                 secretKeyRef:

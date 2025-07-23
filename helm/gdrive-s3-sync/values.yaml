@@ -178,7 +178,7 @@ secrets:
 grafana:
   enabled: true
   admin:
-    password: admin123
+    password: "{{ .Values.grafana.admin.password }}"
   service:
     type: ClusterIP
     port: 80
